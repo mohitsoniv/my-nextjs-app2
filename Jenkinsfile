@@ -38,8 +38,7 @@ pipeline {
                     echo "🧹 Cleaning old modules"
                     rm -rf node_modules package-lock.json || true
                     npm cache clean --force
-
-                    echo "📦 Installing ALL dependencies (incl. dev)"
+                    echo "📦 Installing dependencies (including dev)"
                     npm install
                 '''
             }
@@ -57,13 +56,12 @@ pipeline {
         stage('Package App for Deployment') {
             steps {
                 sh '''
-                    echo "📦 Packaging app"
+                    echo "📦 Packaging app for deployment"
                     rm -rf packaged-app
                     mkdir -p packaged-app
 
                     cp -r .next public package.json next.config.* packaged-app/ || true
 
-                    # Optional files
                     [ -f tailwind.config.js ] && cp tailwind.config.js packaged-app/
                     [ -f tailwind.config.ts ] && cp tailwind.config.ts packaged-app/
                     [ -f postcss.config.js ] && cp postcss.config.js packaged-app/
@@ -71,6 +69,8 @@ pipeline {
 
                     [ -d app ] && cp -r app packaged-app/
                     [ -d pages ] && cp -r pages packaged-app/
+
+                    echo "✅ Packaging complete"
                 '''
             }
         }
@@ -79,7 +79,7 @@ pipeline {
             steps {
                 sshagent(credentials: ["${SSH_KEY_ID}"]) {
                     sh '''
-                        echo "🔐 Trusting EC2 host key"
+                        echo "🔐 Adding EC2 host to known_hosts"
                         mkdir -p ~/.ssh
                         ssh-keyscan -H ${EC2_IP} >> ~/.ssh/known_hosts
                         chmod 644 ~/.ssh/known_hosts
@@ -92,7 +92,7 @@ pipeline {
             steps {
                 sshagent(credentials: ["${SSH_KEY_ID}"]) {
                     sh '''
-                        echo "🛠️ Installing Node.js on EC2 if needed"
+                        echo "🛠️ Ensuring Node.js is installed on EC2"
                         ssh ${EC2_HOST} '
                           if ! command -v node >/dev/null 2>&1; then
                             curl -fsSL https://deb.nodesource.com/setup_18.x | sudo -E bash -
