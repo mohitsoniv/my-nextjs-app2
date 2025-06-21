@@ -61,10 +61,16 @@ pipeline {
                     rm -rf packaged-app
                     mkdir -p packaged-app
 
-                    cp -r .next public package.json next.config.* tailwind.config.* postcss.config.* packaged-app/
+                    cp -r .next public package.json next.config.* packaged-app/
 
-                    if [ -d "app" ]; then cp -r app packaged-app/; fi
-                    if [ -d "pages" ]; then cp -r pages packaged-app/; fi
+                    # Copy optional configs if they exist
+                    [ -f tailwind.config.js ] && cp tailwind.config.js packaged-app/
+                    [ -f tailwind.config.ts ] && cp tailwind.config.ts packaged-app/
+                    [ -f postcss.config.js ] && cp postcss.config.js packaged-app/
+                    [ -f postcss.config.mjs ] && cp postcss.config.mjs packaged-app/
+
+                    [ -d app ] && cp -r app packaged-app/
+                    [ -d pages ] && cp -r pages packaged-app/
                 '''
             }
         }
@@ -117,7 +123,7 @@ pipeline {
                         echo "🚀 Running app on EC2"
                         ssh ${EC2_HOST} '
                           cd ${DEPLOY_DIR}
-                          npm install
+                          npm install --omit=dev
                           npm run build
                           fuser -k ${NEXT_PORT}/tcp || true
                           nohup npx next start -p ${NEXT_PORT} -H 0.0.0.0 > out.log 2>&1 &
