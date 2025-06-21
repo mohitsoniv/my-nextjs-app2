@@ -2,19 +2,20 @@ pipeline {
     agent any
 
     tools {
-        nodejs 'node18' // Jenkins Global Tool Configuration name
+        nodejs 'node18' // Configure this name in Jenkins Global Tool Configuration
     }
 
     environment {
         EC2_USER = 'ubuntu'
         EC2_IP = '13.222.38.219'
         EC2_HOST = "${EC2_USER}@${EC2_IP}"
-        SSH_KEY_ID = 'ec2-ssh-key' // Jenkins credentials ID
+        SSH_KEY_ID = 'ec2-ssh-key' // ID of SSH private key in Jenkins credentials
         DEPLOY_DIR = '/var/www/myapp'
         NEXT_PORT = '3000'
     }
 
     stages {
+
         stage('Checkout Code') {
             steps {
                 git 'https://github.com/mohitsoniv/my-nextjs-app2.git'
@@ -53,12 +54,19 @@ pipeline {
             }
         }
 
-        stage('Package Standalone Build') {
+        stage('Package App for Deployment') {
             steps {
                 sh '''
-                    echo "📦 Packaging standalone build"
+                    echo "📦 Preparing app for deployment"
+                    rm -rf packaged-app
                     mkdir -p packaged-app
-                    cp -r .next/standalone .next/static public package.json next.config.* packaged-app/ 2>/dev/null || echo "Some optional files not found"
+
+                    # Copy necessary runtime and build files
+                    cp -r .next public package.json next.config.* packaged-app/
+
+                    # Copy source code for build to work on EC2 if needed
+                    if [ -d "app" ]; then cp -r app packaged-app/; fi
+                    if [ -d "pages" ]; then cp -r pages packaged-app/; fi
                 '''
             }
         }
@@ -81,7 +89,12 @@ pipeline {
                 sshagent(credentials: ["${SSH_KEY_ID}"]) {
                     sh '''
                         echo "🛠️ Installing Node.js on EC2 (if not installed)"
-                        ssh ${EC2_HOST} "if ! command -v node >/dev/null 2>&1; then curl -fsSL https://deb.nodesource.com/setup_18.x | sudo -E bash - && sudo apt-get install -y nodejs; fi"
+                        ssh ${EC2_HOST} '
+                          if ! command -v node >/dev/null 2>&1; then
+                            curl -fsSL https://deb.nodesource.com/setup_18.x | sudo -E bash -
+                            sudo apt-get install -y nodejs
+                          fi
+                        '
                     '''
                 }
             }
@@ -91,7 +104,7 @@ pipeline {
             steps {
                 sshagent(credentials: ["${SSH_KEY_ID}"]) {
                     sh '''
-                        echo "📤 Deploying to EC2"
+                        echo "📤 Deploying app to EC2"
                         ssh ${EC2_HOST} "sudo mkdir -p ${DEPLOY_DIR} && sudo chown -R ${EC2_USER}:${EC2_USER} ${DEPLOY_DIR}"
                         scp -r packaged-app/* ${EC2_HOST}:${DEPLOY_DIR}
                     '''
@@ -104,7 +117,13 @@ pipeline {
                 sshagent(credentials: ["${SSH_KEY_ID}"]) {
                     sh '''
                         echo "🚀 Starting Next.js app on EC2"
-                        ssh ${EC2_HOST} "cd ${DEPLOY_DIR} && npm install --omit=dev && fuser -k ${NEXT_PORT}/tcp || true && nohup npx next start -p ${NEXT_PORT} > out.log 2>&1 &"
+                        ssh ${EC2_HOST} '
+                          cd ${DEPLOY_DIR}
+                          npm install --omit=dev
+                          npm run build
+                          fuser -k ${NEXT_PORT}/tcp || true
+                          nohup npx next start -p ${NEXT_PORT} -H 0.0.0.0 > out.log 2>&1 &
+                        '
                     '''
                 }
             }
@@ -116,7 +135,7 @@ pipeline {
             echo '✅ Build and deployment successful!'
         }
         failure {
-            echo '❌ Deployment failed. Check the logs above for details.'
+            echo '❌ Deployment failed. Check logs above.'
         }
     }
 }
