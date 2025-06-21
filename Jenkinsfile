@@ -26,7 +26,6 @@ pipeline {
             steps {
                 sh '''
                     echo "🔧 Verifying Node.js and npm"
-                    echo "Node: $(which node)"
                     node -v
                     npm -v
                 '''
@@ -39,6 +38,7 @@ pipeline {
                     echo "🧹 Cleaning old modules"
                     rm -rf node_modules package-lock.json || true
                     npm cache clean --force
+
                     echo "📦 Installing ALL dependencies (incl. dev)"
                     npm install
                 '''
@@ -61,9 +61,9 @@ pipeline {
                     rm -rf packaged-app
                     mkdir -p packaged-app
 
-                    cp -r .next public package.json next.config.* packaged-app/
+                    cp -r .next public package.json next.config.* packaged-app/ || true
 
-                    # Copy optional configs if they exist
+                    # Optional files
                     [ -f tailwind.config.js ] && cp tailwind.config.js packaged-app/
                     [ -f tailwind.config.ts ] && cp tailwind.config.ts packaged-app/
                     [ -f postcss.config.js ] && cp postcss.config.js packaged-app/
@@ -92,7 +92,7 @@ pipeline {
             steps {
                 sshagent(credentials: ["${SSH_KEY_ID}"]) {
                     sh '''
-                        echo "🛠️ Installing Node.js on EC2 if missing"
+                        echo "🛠️ Installing Node.js on EC2 if needed"
                         ssh ${EC2_HOST} '
                           if ! command -v node >/dev/null 2>&1; then
                             curl -fsSL https://deb.nodesource.com/setup_18.x | sudo -E bash -
@@ -120,7 +120,7 @@ pipeline {
             steps {
                 sshagent(credentials: ["${SSH_KEY_ID}"]) {
                     sh '''
-                        echo "🚀 Running app on EC2"
+                        echo "🚀 Starting Next.js app on EC2"
                         ssh ${EC2_HOST} '
                           cd ${DEPLOY_DIR}
                           npm install --omit=dev
