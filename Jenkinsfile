@@ -9,7 +9,7 @@ pipeline {
         EC2_USER = 'ubuntu'
         EC2_IP = '13.222.38.219'
         EC2_HOST = "${EC2_USER}@${EC2_IP}"
-        SSH_KEY_ID = 'ec2-ssh-key' // Jenkins credentials ID (SSH private key)
+        SSH_KEY_ID = 'ec2-ssh-key' // Jenkins credentials ID
         DEPLOY_DIR = '/var/www/myapp'
         NEXT_PORT = '3000'
     }
@@ -81,12 +81,7 @@ pipeline {
                 sshagent(credentials: ["${SSH_KEY_ID}"]) {
                     sh '''
                         echo "🛠️ Installing Node.js on EC2 (if not installed)"
-                        ssh ${EC2_HOST} << EOF
-                          if ! command -v node >/dev/null 2>&1; then
-                            curl -fsSL https://deb.nodesource.com/setup_18.x | sudo -E bash -
-                            sudo apt-get install -y nodejs
-                          fi
-                        EOF
+                        ssh ${EC2_HOST} "if ! command -v node >/dev/null 2>&1; then curl -fsSL https://deb.nodesource.com/setup_18.x | sudo -E bash - && sudo apt-get install -y nodejs; fi"
                     '''
                 }
             }
@@ -109,12 +104,7 @@ pipeline {
                 sshagent(credentials: ["${SSH_KEY_ID}"]) {
                     sh '''
                         echo "🚀 Starting Next.js app on EC2"
-                        ssh ${EC2_HOST} << EOF
-                          cd ${DEPLOY_DIR}
-                          npm install --omit=dev
-                          fuser -k ${NEXT_PORT}/tcp || true
-                          nohup npx next start -p ${NEXT_PORT} > out.log 2>&1 &
-                        EOF
+                        ssh ${EC2_HOST} "cd ${DEPLOY_DIR} && npm install --omit=dev && fuser -k ${NEXT_PORT}/tcp || true && nohup npx next start -p ${NEXT_PORT} > out.log 2>&1 &"
                     '''
                 }
             }
