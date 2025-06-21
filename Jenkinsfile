@@ -2,15 +2,16 @@ pipeline {
     agent any
 
     tools {
-        nodejs 'node18' // Name from Jenkins Global Tool Configuration
+        nodejs 'node18' // Jenkins Global Tool Configuration name
     }
 
     environment {
         EC2_USER = 'ubuntu'
         EC2_IP = '13.222.38.219'
         EC2_HOST = "${EC2_USER}@${EC2_IP}"
-        SSH_KEY_ID = 'ec2-ssh-key' // Jenkins credential ID
+        SSH_KEY_ID = 'ec2-ssh-key' // Jenkins credentials ID (SSH private key)
         DEPLOY_DIR = '/var/www/myapp'
+        NEXT_PORT = '3000'
     }
 
     stages {
@@ -57,7 +58,7 @@ pipeline {
                 sh '''
                     echo "📦 Packaging standalone build"
                     mkdir -p packaged-app
-                    cp -r .next/standalone public next.config.* package.json packaged-app/
+                    cp -r .next/standalone .next/static public package.json next.config.* packaged-app/ 2>/dev/null || echo "Some optional files not found"
                 '''
             }
         }
@@ -75,15 +76,45 @@ pipeline {
             }
         }
 
+        stage('Install Node.js on EC2') {
+            steps {
+                sshagent(credentials: ["${SSH_KEY_ID}"]) {
+                    sh '''
+                        echo "🛠️ Installing Node.js on EC2 (if not installed)"
+                        ssh ${EC2_HOST} << EOF
+                          if ! command -v node >/dev/null 2>&1; then
+                            curl -fsSL https://deb.nodesource.com/setup_18.x | sudo -E bash -
+                            sudo apt-get install -y nodejs
+                          fi
+                        EOF
+                    '''
+                }
+            }
+        }
+
         stage('Deploy to EC2') {
             steps {
                 sshagent(credentials: ["${SSH_KEY_ID}"]) {
                     sh '''
-                        echo "🚀 Connecting to EC2 (${EC2_HOST})"
-                        ssh -o StrictHostKeyChecking=no ${EC2_HOST} "sudo mkdir -p ${DEPLOY_DIR} && sudo chown -R ${EC2_USER}:${EC2_USER} ${DEPLOY_DIR}"
-
-                        echo "📤 Transferring files to EC2"
+                        echo "📤 Deploying to EC2"
+                        ssh ${EC2_HOST} "sudo mkdir -p ${DEPLOY_DIR} && sudo chown -R ${EC2_USER}:${EC2_USER} ${DEPLOY_DIR}"
                         scp -r packaged-app/* ${EC2_HOST}:${DEPLOY_DIR}
+                    '''
+                }
+            }
+        }
+
+        stage('Start Next.js App') {
+            steps {
+                sshagent(credentials: ["${SSH_KEY_ID}"]) {
+                    sh '''
+                        echo "🚀 Starting Next.js app on EC2"
+                        ssh ${EC2_HOST} << EOF
+                          cd ${DEPLOY_DIR}
+                          npm install --omit=dev
+                          fuser -k ${NEXT_PORT}/tcp || true
+                          nohup npx next start -p ${NEXT_PORT} > out.log 2>&1 &
+                        EOF
                     '''
                 }
             }
