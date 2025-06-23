@@ -7,7 +7,7 @@ pipeline {
 
     environment {
         EC2_USER = 'ubuntu'
-        EC2_IP = '127.0.0.1'
+        EC2_IP = '44.201.223.204'
         EC2_HOST = "${EC2_USER}@${EC2_IP}"
         SSH_KEY_ID = 'ec2-ssh-key'
         DEPLOY_DIR = '/var/www/myapp'
